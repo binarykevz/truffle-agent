@@ -2,6 +2,7 @@ import { Context } from "grammy";
 import * as cheerio from "cheerio";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
+import { isTermux, launchOnTermux, listInstalledApps, getKnownApps, APP_REGISTRY } from "./device";
 
 // Interface for our tools
 export interface Tool {
@@ -74,6 +75,82 @@ export const tools: Tool[] = [
             }
         }
     },
+        {
+        name: "open_app",
+        description: `Open an application on the user's device. 
+        Accepts a known app name (${getKnownApps().join(", ")}) OR an Android package name (e.g., com.whatsapp). 
+        On Termux, launches directly. On VPS, sends a clickable inline button.`,
+        parameters: {
+            type: "object",
+            properties: {
+                app: { type: "string", description: "App name or Android package name" },
+                extra: { type: "string", description: "Optional extra data (phone number for dialer, URL for browser, etc.)" }
+            },
+            required: ["app"]
+        },
+        execute: async ({ app, extra = "" }, ctx) => {
+            // --- Termux: launch directly ---
+            if (isTermux()) {
+                return await launchOnTermux(app, extra);
+            }
+
+            // --- VPS: send inline button with deep link ---
+            const key = app.toLowerCase();
+            const known = APP_REGISTRY[key];
+            const url = known ? (known.web + extra) : extra;
+
+            if (!url) {
+                return `❌ Cannot open "${app}" remotely. Provide a URL or run the bot on Termux.`;
+            }
+
+            await ctx.reply(`🚀 Tap to open ${app}:`, {
+                reply_markup: {
+                    inline_keyboard: [[{ text: `Open ${app}`, url }]]
+                }
+            });
+            return `Sent button to open ${app}.`;
+        }
+    },
+    {
+        name: "list_installed_apps",
+        description: "List all third-party apps installed on the device. Only works when the bot runs on Termux/Android.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => {
+            if (!isTermux()) {
+                return "❌ This tool only works when the bot runs on Termux/Android.";
+            }
+            const apps = await listInstalledApps();
+            if (apps.length === 0) return "No third-party apps found.";
+            // Return first 100 to avoid overwhelming the LLM context
+            const preview = apps.slice(0, 100).join("\n");
+            return `Installed apps (${apps.length} total, showing first 100):\n${preview}`;
+        }
+    },
+    {
+        name: "open_url",
+        description: "Open any URL or deep link on the user's device. The OS will route it to the appropriate app (e.g., vnd.youtube:// opens YouTube).",
+        parameters: {
+            type: "object",
+            properties: {
+                url: { type: "string", description: "The URL or deep link to open" }
+            },
+            required: ["url"]
+        },
+        execute: async ({ url }, ctx) => {
+            if (isTermux()) {
+                const proc = Bun.spawn(
+                    ["am", "start", "-a", "android.intent.action.VIEW", "-d", url],
+                    { stdout: "pipe", stderr: "pipe" }
+                );
+                await proc.exited;
+                return `✅ Opened ${url} on device.`;
+            }
+            await ctx.reply(`🔗 Tap to open:`, {
+                reply_markup: { inline_keyboard: [[{ text: "Open Link", url }]] }
+            });
+            return `Sent link button.`;
+        }
+    },
     {
         name: "openclaw_action",
         description: "Perform an action on OpenClaw by sending an HTTP request.",
@@ -94,25 +171,6 @@ export const tools: Tool[] = [
             });
             return await res.text();
         }
-    },
-    {
-        name: "open_device_app",
-        description: "Open an application on the user's device (e.g., Gmail, Browser) by sending a clickable inline button.",
-        parameters: {
-            type: "object",
-            properties: {
-                app_name: { type: "string", description: "The name of the app to open" },
-                url: { type: "string", description: "The web URL or deep link for the app" }
-            },
-            required: ["app_name", "url"]
-        },
-        execute: async ({ app_name, url }, ctx: Context) => {
-            await ctx.reply(`🚀 Opening ${app_name}...`, {
-                reply_markup: {
-                    inline_keyboard: [[ { text: `Click to open ${app_name}`, url: url } ]]
-                }
-            });
-            return `Sent link to open ${app_name}.`;
-        }
     }
+    
 ];
