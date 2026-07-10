@@ -1,4 +1,4 @@
-import { type Message } from "./db";
+import { type Message, getConfig } from "./db";
 
 export interface ToolDef {
     name: string;
@@ -7,28 +7,34 @@ export interface ToolDef {
 }
 
 export async function callLLM(messages: Message[], tools: ToolDef[]): Promise<Message> {
-    const res = await fetch(`${process.env.DASHSCOPE_BASE_URL}/chat/completions`, {
+    const apiKey = await getConfig("api_key");
+    const baseUrl = await getConfig("base_url");
+    const model = (await getConfig("model")) || "qwen-max";
+
+    if (!apiKey || !baseUrl) throw new Error("api_key or base_url not configured. Use /setconfig.");
+
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.DASHSCOPE_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: process.env.MODEL || "qwen-max",
+            model,
             messages,
-            tools: tools.map(t => ({
+            tools: tools.map((t) => ({
                 type: "function",
-                function: { name: t.name, description: t.description, parameters: t.parameters }
+                function: { name: t.name, description: t.description, parameters: t.parameters },
             })),
             tool_choice: "auto",
-            stream: false
-        })
+            stream: false,
+        }),
     });
 
     if (!res.ok) {
         throw new Error(`LLM Error: ${res.status} ${await res.text()}`);
     }
 
-    const data = await res.json() as any;
+    const data = (await res.json()) as any;
     return data.choices[0].message;
 }
