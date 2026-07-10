@@ -113,3 +113,8 @@ function validateForLLM(messages: Message[]): Message[] {
     }
     return copy;
 }
+
+// ✅ THIS WAS MISSING — Export the reset function
+export function resetAgent(userId: number) {
+    clearHistory(userId);
+}
