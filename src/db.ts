@@ -36,7 +36,7 @@ export async function initDB() {
             timestamp INTEGER NOT NULL
         )`,
         `CREATE INDEX IF NOT EXISTS idx_history_user ON history(user_id, timestamp)`,
-    ], "exclusive");
+    ], "write");
 }
 
 // ============================================================
