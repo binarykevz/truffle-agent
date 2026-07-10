@@ -20,7 +20,7 @@ Guidelines:
 
 export async function runAgent(ctx: Context, userMessage: string): Promise<string> {
     const userId = ctx.from!.id;
-    
+
     // 1. Initialize history
     let history = getHistory(userId);
     if (history.length === 0) {
@@ -30,30 +30,39 @@ export async function runAgent(ctx: Context, userMessage: string): Promise<strin
     saveMessage(userId, { role: "user", content: userMessage });
 
     const toolDefs: ToolDef[] = tools.map(t => ({
-        name: t.name, description: t.description, parameters: t.parameters
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
     }));
 
-    // 2. Agent Loop (Max 5 iterations to prevent infinite loops)
+    // 2. Agent Loop (max 5 iterations)
     for (let i = 0; i < 5; i++) {
         await ctx.replyWithChatAction("typing");
-        
+
+        // Defensive: validate history before every LLM call
+        history = validateForLLM(history);
+
         const reply = await callLLM(history, toolDefs);
         history.push(reply);
         saveMessage(userId, reply);
 
-        // If no tool calls, we have our final answer
         if (!reply.tool_calls || reply.tool_calls.length === 0) {
             return reply.content || "I'm not sure how to respond to that.";
         }
 
-        // 3. Execute Tools
+        // 3. Execute tools
         for (const toolCall of reply.tool_calls) {
             const toolName = toolCall.function.name;
-            const toolArgs = JSON.parse(toolCall.function.arguments || "{}");
-            
+            let toolArgs: any = {};
+            try {
+                toolArgs = JSON.parse(toolCall.function.arguments || "{}");
+            } catch {
+                toolArgs = {};
+            }
+
             const tool = tools.find(t => t.name === toolName);
-            let result = "Tool not found";
-            
+            let result: any = "Tool not found";
+
             if (tool) {
                 try {
                     result = await tool.execute(toolArgs, ctx);
@@ -62,12 +71,11 @@ export async function runAgent(ctx: Context, userMessage: string): Promise<strin
                 }
             }
 
-            // Save tool result to history
             const toolMsg: Message = {
                 role: "tool",
-                content: typeof result === 'string' ? result : JSON.stringify(result),
+                content: typeof result === "string" ? result : JSON.stringify(result),
                 tool_call_id: toolCall.id,
-                name: toolName
+                name: toolName,
             };
             history.push(toolMsg);
             saveMessage(userId, toolMsg);
@@ -77,6 +85,31 @@ export async function runAgent(ctx: Context, userMessage: string): Promise<strin
     return "⚠️ I reached the maximum number of steps. Please try again.";
 }
 
-export function resetAgent(userId: number) {
-    clearHistory(userId);
+/**
+ * Final safety net: ensures history is valid for the LLM.
+ * Removes any trailing assistant message with unfulfilled tool_calls.
+ */
+function validateForLLM(messages: Message[]): Message[] {
+    const copy = [...messages];
+    // Walk backwards and remove trailing incomplete sequences
+    while (copy.length > 0) {
+        const last = copy[copy.length - 1];
+        if (last.role === "assistant" && last.tool_calls && last.tool_calls.length > 0) {
+            copy.pop(); // drop orphaned assistant tool_calls
+            continue;
+        }
+        if (last.role === "tool") {
+            // Check if there's a matching assistant tool_call before it
+            const match = copy
+                .slice(0, -1)
+                .reverse()
+                .find(m => m.role === "assistant" && m.tool_calls?.some((tc: any) => tc.id === last.tool_call_id));
+            if (!match) {
+                copy.pop(); // orphaned tool response — drop it
+                continue;
+            }
+        }
+        break;
+    }
+    return copy;
 }
