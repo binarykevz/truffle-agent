@@ -16,41 +16,37 @@ Guidelines:
 - If the app isn't in the known list, ask the user for the Android package name.
 - For phone calls, use app="dialer" with extra="+1234567890".
 - For SMS, use app="sms" with extra="+1234567890".
-- Keep responses concise and confirm actions clearly.`;
+- Think step-by-step. Use tools when necessary. Keep responses concise.`;
 
 export async function runAgent(ctx: Context, userMessage: string): Promise<string> {
     const userId = ctx.from!.id;
 
-    // 1. Initialize history
-    let history = getHistory(userId);
+    let history = await getHistory(userId);
     if (history.length === 0) {
         history.push({ role: "system", content: SYSTEM_PROMPT });
     }
     history.push({ role: "user", content: userMessage });
-    saveMessage(userId, { role: "user", content: userMessage });
+    await saveMessage(userId, { role: "user", content: userMessage });
 
-    const toolDefs: ToolDef[] = tools.map(t => ({
+    const toolDefs: ToolDef[] = tools.map((t) => ({
         name: t.name,
         description: t.description,
         parameters: t.parameters,
     }));
 
-    // 2. Agent Loop (max 5 iterations)
     for (let i = 0; i < 5; i++) {
         await ctx.replyWithChatAction("typing");
 
-        // Defensive: validate history before every LLM call
         history = validateForLLM(history);
 
         const reply = await callLLM(history, toolDefs);
         history.push(reply);
-        saveMessage(userId, reply);
+        await saveMessage(userId, reply);
 
         if (!reply.tool_calls || reply.tool_calls.length === 0) {
             return reply.content || "I'm not sure how to respond to that.";
         }
 
-        // 3. Execute tools
         for (const toolCall of reply.tool_calls) {
             const toolName = toolCall.function.name;
             let toolArgs: any = {};
@@ -60,7 +56,7 @@ export async function runAgent(ctx: Context, userMessage: string): Promise<strin
                 toolArgs = {};
             }
 
-            const tool = tools.find(t => t.name === toolName);
+            const tool = tools.find((t) => t.name === toolName);
             let result: any = "Tool not found";
 
             if (tool) {
@@ -78,43 +74,36 @@ export async function runAgent(ctx: Context, userMessage: string): Promise<strin
                 name: toolName,
             };
             history.push(toolMsg);
-            saveMessage(userId, toolMsg);
+            await saveMessage(userId, toolMsg);
         }
     }
 
     return "⚠️ I reached the maximum number of steps. Please try again.";
 }
 
-/**
- * Final safety net: ensures history is valid for the LLM.
- * Removes any trailing assistant message with unfulfilled tool_calls.
- */
+export async function resetAgent(userId: number) {
+    await clearHistory(userId);
+}
+
 function validateForLLM(messages: Message[]): Message[] {
     const copy = [...messages];
-    // Walk backwards and remove trailing incomplete sequences
     while (copy.length > 0) {
         const last = copy[copy.length - 1];
         if (last.role === "assistant" && last.tool_calls && last.tool_calls.length > 0) {
-            copy.pop(); // drop orphaned assistant tool_calls
+            copy.pop();
             continue;
         }
         if (last.role === "tool") {
-            // Check if there's a matching assistant tool_call before it
             const match = copy
                 .slice(0, -1)
                 .reverse()
-                .find(m => m.role === "assistant" && m.tool_calls?.some((tc: any) => tc.id === last.tool_call_id));
+                .find((m) => m.role === "assistant" && m.tool_calls?.some((tc: any) => tc.id === last.tool_call_id));
             if (!match) {
-                copy.pop(); // orphaned tool response — drop it
+                copy.pop();
                 continue;
             }
         }
         break;
     }
     return copy;
-}
-
-// ✅ THIS WAS MISSING — Export the reset function
-export function resetAgent(userId: number) {
-    clearHistory(userId);
 }
