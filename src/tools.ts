@@ -96,27 +96,59 @@ export const tools: Tool[] = [
     },
     {
         name: "openclaw_action",
-        description: "Perform an action on OpenClaw by sending an HTTP request.",
+        description:
+            "Send a message to the OpenClaw agent via webhook. Use this to trigger actions, send notifications, or interact with the OpenClaw system. Returns the response from OpenClaw.",
         parameters: {
             type: "object",
             properties: {
-                endpoint: { type: "string", description: "The API endpoint or action name" },
-                payload: { type: "object", description: "JSON payload to send" },
-            },
-            required: ["endpoint"],
-        },
-        execute: async ({ endpoint, payload = {} }) => {
-            const openclawUrl = (await getConfig("openclaw_url")) || "https://api.openclaw.example";
-            const openclawKey = await getConfig("openclaw_key");
-            const res = await fetch(`${openclawUrl.replace(/\/$/, "")}/${endpoint}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(openclawKey ? { Authorization: `Bearer ${openclawKey}` } : {}),
+                message: {
+                    type: "string",
+                    description: "The message to send to OpenClaw",
                 },
-                body: JSON.stringify(payload),
-            });
-            return await res.text();
+                name: {
+                    type: "string",
+                    description: "Source identifier (default: 'Telegram')",
+                },
+                deliver: {
+                    type: "boolean",
+                    description: "Whether to deliver the message immediately (default: true)",
+                },
+            },
+            required: ["message"],
+        },
+        execute: async ({ message, name = "Telegram", deliver = true }) => {
+            const openclawUrl =
+                (await getConfig("openclaw_url")) || "http://127.0.0.1:18789/hooks/agent";
+            const openclawKey = await getConfig("openclaw_key");
+
+            if (!openclawKey) {
+                return "❌ OpenClaw API key not configured. Owner must run: /setconfig openclaw_key <token>";
+            }
+
+            try {
+                const res = await fetch(openclawUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${openclawKey}`,
+                    },
+                    body: JSON.stringify({ message, name, deliver }),
+                });
+
+                const text = await res.text();
+
+                if (!res.ok) {
+                    return `❌ OpenClaw returned HTTP ${res.status}: ${text.slice(0, 500)}`;
+                }
+
+                try {
+                    return JSON.parse(text);
+                } catch {
+                    return text.slice(0, 2000);
+                }
+            } catch (err: any) {
+                return `❌ OpenClaw request failed: ${err.message}. Is OpenClaw running on ${openclawUrl}?`;
+            }
         },
     },
     {
