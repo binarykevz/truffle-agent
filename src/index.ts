@@ -195,10 +195,12 @@ async function main() {
                 `• Base URL: \`${config.base_url ?? "not set"}\`\n` +
                 `• API Key: ${config.api_key ? "✅ set" : "❌ missing"}\n` +
                 `• Bot Token: ${config.bot_token ? "✅ set" : "❌ missing"}\n` +
-                `• OpenClaw URL: \`${config.openclaw_url ?? "not set"}\``,
+                `• OpenClaw URL: \`${config.openclaw_url ?? "not set"}\`\n` +
+                `• OpenClaw Key: ${config.openclaw_key ? "✅ set" : "❌ missing"}`,
             { parse_mode: "Markdown" }
         );
     });
+    
 
     // === /reset (all allowed users) ===
     bot.command("reset", async (ctx) => {
