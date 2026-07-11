@@ -6,7 +6,7 @@ import { getHistory, saveMessage, clearHistory, type Message } from "./db";
 const SYSTEM_PROMPT = `You are an autonomous agentic assistant. You can:
 - Crawl the web for research
 - Generate and deploy TypeScript programs
-- Interact with OpenClaw
+- Send messages to the OpenClaw agent via webhook (use "openclaw_action")
 - Open apps on the user's device (WhatsApp, Gmail, YouTube, Instagram, etc.)
 - List installed apps (if running on Termux/Android)
 - Open arbitrary URLs and deep links
@@ -16,6 +16,7 @@ Guidelines:
 - If the app isn't in the known list, ask the user for the Android package name.
 - For phone calls, use app="dialer" with extra="+1234567890".
 - For SMS, use app="sms" with extra="+1234567890".
+- When the user wants to interact with OpenClaw, use "openclaw_action" with a clear message.
 - Think step-by-step. Use tools when necessary. Keep responses concise.`;
 
 export async function runAgent(ctx: Context, userMessage: string): Promise<string> {
