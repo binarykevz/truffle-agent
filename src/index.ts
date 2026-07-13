@@ -24,17 +24,17 @@ async function main() {
         console.log(`👑 Owner locked to Telegram ID: ${ownerId}`);
     }
 
-// Auto-seed OpenClaw defaults if not yet configured
+    // Auto-seed OpenClaw defaults if not yet configured
     if (!(await getConfig("openclaw_url"))) {
         await setConfig("openclaw_url", "http://127.0.0.1:18789/hooks/agent");
         console.log("🔌 OpenClaw URL seeded: http://127.0.0.1:18789/hooks/agent");
     }
-    if (!(await getConfig("openclaw_key"))) {
+    if (!(await getConfig("openclaw_token"))) {
         await setConfig(
-            "openclaw_key",
-            "2c60ebb63cf06ba834c2c3592dcee56afaefb65e4fa6cd002728109042237f84"
+            "openclaw_token",
+            "f1d98b9579ab55a32afefac44feafe681457c903178409f9"
         );
-        console.log("🔑 OpenClaw API key seeded");
+        console.log("🔑 OpenClaw gateway token seeded");
     }
 
     // Auto-seed bot token from .env if not yet in DB
