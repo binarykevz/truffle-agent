@@ -94,58 +94,57 @@ export const tools: Tool[] = [
             }
         },
     },
-    {
+        {
         name: "openclaw_action",
         description:
-            "Send a message to the OpenClaw agent via webhook. Use this to trigger actions, send notifications, or interact with the OpenClaw system. Returns the response from OpenClaw.",
+            "Send a message to the OpenClaw agent. Use this to ask questions, trigger actions, or interact with the OpenClaw system. Returns the response from OpenClaw.",
         parameters: {
             type: "object",
             properties: {
                 message: {
                     type: "string",
-                    description: "The message to send to OpenClaw",
+                    description: "The message or question to send to the OpenClaw agent",
                 },
-                name: {
+                session: {
                     type: "string",
-                    description: "Source identifier (default: 'Telegram')",
-                },
-                deliver: {
-                    type: "boolean",
-                    description: "Whether to deliver the message immediately (default: true)",
+                    description: "The OpenClaw session to use (default: 'agent:main:main')",
                 },
             },
             required: ["message"],
         },
-        execute: async ({ message, name = "Telegram", deliver = true }) => {
+        execute: async ({ message, session = "agent:main:main" }, ctx) => {
             const openclawUrl =
                 (await getConfig("openclaw_url")) || "http://127.0.0.1:18789/hooks/agent";
-            const openclawKey = await getConfig("openclaw_key");
+            const openclawToken = await getConfig("openclaw_token");
 
-            if (!openclawKey) {
-                return "❌ OpenClaw API key not configured. Owner must run: /setconfig openclaw_key <token>";
+            if (!openclawToken) {
+                return "❌ OpenClaw token not configured. Owner must run: /setconfig openclaw_token <token>";
             }
 
             try {
-                const res = await fetch(openclawUrl, {
+                const response = await fetch(openclawUrl, {
                     method: "POST",
                     headers: {
+                        Authorization: `Bearer ${openclawToken}`,
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${openclawKey}`,
                     },
-                    body: JSON.stringify({ message, name, deliver }),
+                    body: JSON.stringify({
+                        message: message,
+                        session: session,
+                        name: "telegram",
+                        user: String(ctx.from?.id || "unknown"),
+                    }),
                 });
 
-                const text = await res.text();
-
-                if (!res.ok) {
-                    return `❌ OpenClaw returned HTTP ${res.status}: ${text.slice(0, 500)}`;
+                if (!response.ok) {
+                    return `❌ OpenClaw request failed: ${response.status} ${response.statusText}`;
                 }
 
-                try {
-                    return JSON.parse(text);
-                } catch {
-                    return text.slice(0, 2000);
-                }
+                const data = await response.json();
+                
+                // OpenClaw might return various structures. Stringify it cleanly for the LLM.
+                if (typeof data === "string") return data;
+                return JSON.stringify(data, null, 2).slice(0, 4000);
             } catch (err: any) {
                 return `❌ OpenClaw request failed: ${err.message}. Is OpenClaw running on ${openclawUrl}?`;
             }
