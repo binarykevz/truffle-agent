@@ -10,7 +10,8 @@
   "dependencies": {
     "grammy": "^1.28.0",
     "cheerio": "^1.0.0-rc.12",
-    "@libsql/client": "^0.14.0"
+    "@libsql/client": "^0.14.0",
+     "sharp": "^0.33.4"
   },
   "devDependencies": {
     "@types/bun": "latest"
