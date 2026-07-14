@@ -2,6 +2,7 @@ import { Context } from "grammy";
 import { callLLM, type ToolDef } from "./llm";
 import { tools } from "./tools";
 import { getHistory, saveMessage, clearHistory, type Message } from "./db";
+import { getConversionOptions } from "./converter";
 
 const SYSTEM_PROMPT = `You are an autonomous agentic assistant. You can:
 - Crawl the web for research
