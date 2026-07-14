@@ -2,6 +2,7 @@ import { Context } from "grammy";
 import * as cheerio from "cheerio";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
+import { getConversionOptions } from "./converter";
 import { getConfig } from "./db";
 import {
     isTermux,
@@ -35,6 +36,50 @@ export const tools: Tool[] = [
             const $ = cheerio.load(html);
             $("script, style, nav, footer").remove();
             return $("body").text().replace(/\s+/g, " ").trim().slice(0, 4000);
+        },
+    },
+        {
+        name: "get_conversion_options",
+        description: "Get a list of supported target formats for a given file extension.",
+        parameters: {
+            type: "object",
+            properties: {
+                file_extension: { type: "string", description: "The current file extension (e.g., 'pdf', 'jpg')" }
+            },
+            required: ["file_extension"]
+        },
+        execute: async ({ file_extension }) => {
+            return getConversionOptions(file_extension);
+        }
+    },
+    {
+        name: "show_conversion_menu",
+        description: "Displays an interactive inline keyboard to the user with available conversion formats for their uploaded file.",
+        parameters: {
+            type: "object",
+            properties: {
+                job_id: { type: "string", description: "The unique job ID of the attached file" },
+                current_format: { type: "string", description: "Current file extension" },
+                options: { type: "array", items: { type: "string" }, description: "Available target formats" }
+            },
+            required: ["job_id", "current_format", "options"]
+        },
+        execute: async ({ job_id, current_format, options }, ctx) => {
+            const keyboard = options.map(opt => ({
+                text: `📄 ${current_format.toUpperCase()} → ${opt.toUpperCase()}`,
+                callback_data: `conv_${job_id}_${opt}`
+            }));
+            
+            // Split into rows of 8 buttons (Telegram limit)
+            const rows = [];
+            for (let i = 0; i < keyboard.length; i += 8) {
+                rows.push(keyboard.slice(i, i + 8));
+            }
+
+            await ctx.reply("✨ Choose your desired output format:", {
+                reply_markup: { inline_keyboard: rows }
+            });
+            return `Conversion menu displayed for job ${job_id}. Waiting for user selection.`;
         },
     },
     {
